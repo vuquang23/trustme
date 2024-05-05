@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-contrib/cors"
@@ -11,6 +12,22 @@ import (
 	requestidpkg "github.com/vuquang23/trustme/internal/pkg/util/requestid"
 	"github.com/vuquang23/trustme/pkg/logger"
 )
+
+func Run(ctx context.Context, address string, engine *gin.Engine) error {
+	srv := &http.Server{
+		Addr:    address,
+		Handler: engine,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error(ctx, err.Error())
+		}
+	}()
+	<-ctx.Done()
+	logger.Info(ctx, "HTTP server shutdown")
+	return srv.Shutdown(ctx)
+}
 
 func GinEngine(config Config, logCfg logger.Config, logBackend logger.LoggerBackend) *gin.Engine {
 	gin.SetMode(config.Mode)

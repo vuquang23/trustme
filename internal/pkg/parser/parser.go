@@ -119,13 +119,15 @@ func (p *Parser) handleBlock(ctx context.Context, hash common.Hash) error {
 		var (
 			subscriber string
 			fromStr    = strings.ToLower(from.Hex())
-			toStr      = strings.ToLower(tx.To().Hex())
 		)
 
 		if p.subscriberRepo.IsSubscriber(fromStr) {
 			subscriber = fromStr
-		} else if p.subscriberRepo.IsSubscriber(toStr) {
-			subscriber = toStr
+		} else if tx.To() != nil {
+			toStr := strings.ToLower(tx.To().Hex())
+			if p.subscriberRepo.IsSubscriber(toStr) {
+				subscriber = toStr
+			}
 		}
 
 		if subscriber == "" {

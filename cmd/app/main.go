@@ -8,13 +8,16 @@ import (
 
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sys/unix"
+
+	"github.com/vuquang23/trustme/internal/pkg/api"
 	"github.com/vuquang23/trustme/internal/pkg/config"
 	"github.com/vuquang23/trustme/internal/pkg/parser"
 	"github.com/vuquang23/trustme/internal/pkg/repository/subscriber"
 	"github.com/vuquang23/trustme/internal/pkg/repository/tx"
+	"github.com/vuquang23/trustme/internal/pkg/server"
 	"github.com/vuquang23/trustme/pkg/logger"
-	"golang.org/x/sync/errgroup"
-	"golang.org/x/sys/unix"
 )
 
 func main() {
@@ -51,6 +54,7 @@ func main() {
 						cancel()
 					}()
 
+					// eth clients
 					rpcClient, err := ethclient.Dial("https://ethereum-rpc.publicnode.com")
 					if err != nil {
 						return err
@@ -61,13 +65,23 @@ func main() {
 						return err
 					}
 
+					// repositories
 					subscriberRepo := subscriber.NewMemRepository()
 					txRepo := tx.NewMemRepository()
 
+					// parser
 					parser := parser.New(rpcClient, wsClient, subscriberRepo, txRepo)
 
+					// http server
+					engine := server.GinEngine(conf.Http, conf.Log, logger.LoggerBackendZap)
+					api.SetupRoute(engine, parser)
+
+					// run goroutines
 					var errGroup errgroup.Group
 					errGroup.Go(func() error { return parser.Run(ctx) })
+					errGroup.Go(func() error {
+						return server.Run(ctx, conf.Http.BindAddress, engine)
+					})
 
 					err = errGroup.Wait()
 					if err != nil && err != context.Canceled {
