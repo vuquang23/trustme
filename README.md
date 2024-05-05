@@ -12,5 +12,5 @@ $ go mod tidy
 ## Run
 
 ```
-$ make
+$ go run cmd/app/main.go
 ```

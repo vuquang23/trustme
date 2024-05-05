@@ -37,7 +37,7 @@ func New(rpcClient, wsClient *ethclient.Client, subscriberRepo ISubscriberReposi
 }
 
 func (p *Parser) Run(ctx context.Context) error {
-	errgroup, ctx := errgroup.WithContext(ctx)
+	var errgroup errgroup.Group
 
 	errgroup.Go(func() error { return p.listenBlocks(ctx) })
 	errgroup.Go(func() error { return p.handleBlocks(ctx) })
@@ -55,8 +55,13 @@ func (p *Parser) listenBlocks(ctx context.Context) error {
 
 		for {
 			select {
+			case <-ctx.Done():
+				logger.Infof(ctx, "stop listening blocks")
+				return ctx.Err()
+
 			case err := <-sub.Err():
 				return err
+
 			case header := <-headers:
 				p.currentBlock.Store(header.Number.Int64())
 				p.blockHashChan <- header.Hash()
@@ -67,7 +72,9 @@ func (p *Parser) listenBlocks(ctx context.Context) error {
 		logger.Info(ctx, "listen new blocks...")
 
 		if err := f(); err != nil {
-			logger.Errorf(ctx, err.Error())
+			if err == ctx.Err() {
+				return ctx.Err()
+			}
 		}
 
 		time.Sleep(3 * time.Second)
@@ -75,18 +82,22 @@ func (p *Parser) listenBlocks(ctx context.Context) error {
 }
 
 func (p *Parser) handleBlocks(ctx context.Context) error {
-	for h := range p.blockHashChan {
-		logger.WithFields(ctx, logger.Fields{"hash": h.Hex()}).Info("new block")
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Infof(ctx, "stop handling blocks")
+			return ctx.Err()
 
-		if err := p.handleBlock(ctx, h); err != nil {
-			logger.WithFields(ctx, logger.Fields{
-				"hash":     h.Hex(),
-				"errorMsg": err.Error(),
-			}).Warn("failed to handle block")
+		case h := <-p.blockHashChan:
+			logger.WithFields(ctx, logger.Fields{"hash": h.Hex()}).Info("new block")
+			if err := p.handleBlock(ctx, h); err != nil {
+				logger.WithFields(ctx, logger.Fields{
+					"hash":     h.Hex(),
+					"errorMsg": err.Error(),
+				}).Warn("failed to handle block")
+			}
 		}
 	}
-
-	return nil
 }
 
 func (p *Parser) handleBlock(ctx context.Context, hash common.Hash) error {

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"os/signal"
 
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/urfave/cli/v2"
@@ -12,6 +14,7 @@ import (
 	"github.com/vuquang23/trustme/internal/pkg/repository/tx"
 	"github.com/vuquang23/trustme/pkg/logger"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sys/unix"
 )
 
 func main() {
@@ -40,7 +43,13 @@ func main() {
 						return err
 					}
 
-					errGroup, ctx := errgroup.WithContext(c.Context)
+					ctx, cancel := context.WithCancel(context.Background())
+					go func() {
+						sigs := make(chan os.Signal, 1)
+						signal.Notify(sigs, unix.SIGTERM, unix.SIGINT)
+						<-sigs
+						cancel()
+					}()
 
 					rpcClient, err := ethclient.Dial("https://ethereum-rpc.publicnode.com")
 					if err != nil {
@@ -57,9 +66,17 @@ func main() {
 
 					parser := parser.New(rpcClient, wsClient, subscriberRepo, txRepo)
 
+					var errGroup errgroup.Group
 					errGroup.Go(func() error { return parser.Run(ctx) })
 
-					return errGroup.Wait()
+					err = errGroup.Wait()
+					if err != nil && err != context.Canceled {
+						return err
+					}
+
+					logger.Info(ctx, "shutdown!")
+
+					return nil
 				},
 			},
 		},
