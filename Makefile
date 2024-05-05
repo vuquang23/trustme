@@ -1,4 +1,4 @@
 SHELL := /bin/bash
 
-test:
-	@bash ./scripts/test.sh
+go:
+	@go run cmd/app/main.go
