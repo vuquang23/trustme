@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/vuquang23/trustme/internal/pkg/api/validator"
 	"github.com/vuquang23/trustme/internal/pkg/util/requestid"
 	"github.com/vuquang23/trustme/pkg/logger"
 )
@@ -28,15 +27,6 @@ type ErrorResponse struct {
 
 	HTTPStatus int    `json:"-"`
 	RequestID  string `json:"requestId"`
-}
-
-type DetailsBadRequest struct {
-	FieldViolations []*DetailBadRequestFieldViolation `json:"fieldViolations"`
-}
-
-type DetailBadRequestFieldViolation struct {
-	Field       string `json:"field"`
-	Description string `json:"description"`
 }
 
 var DefaultErrorResponse = ErrorResponse{
@@ -60,12 +50,6 @@ func RespondSuccess(c *gin.Context, data interface{}) {
 }
 
 func RespondFailure(c *gin.Context, err error) {
-	var validationErr *validator.ValidationError
-	if errors.As(err, &validationErr) {
-		respondValidationError(c, validationErr)
-		return
-	}
-
 	if errors.Is(err, context.Canceled) {
 		respondContextCanceledError(c)
 		return
@@ -97,29 +81,6 @@ func responseFromErr(err error) ErrorResponse {
 
 		err = errors.Unwrap(err)
 	}
-}
-
-func respondValidationError(c *gin.Context, err *validator.ValidationError) {
-	errorResponse := ErrorResponse{
-		Code:    4000,
-		Message: "bad request",
-		Details: []interface{}{
-			&DetailsBadRequest{
-				FieldViolations: []*DetailBadRequestFieldViolation{
-					{
-						Field:       err.Field,
-						Description: err.Description,
-					},
-				},
-			},
-		},
-		RequestID: requestid.ExtractRequestID(c),
-	}
-
-	c.JSON(
-		http.StatusBadRequest,
-		errorResponse,
-	)
 }
 
 const ClientClosedRequestStatusCode = 499
